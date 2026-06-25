@@ -30,7 +30,7 @@ pipeline {
         sh """
           docker run --rm \
             -v "\$PWD":/workspace \
-            -v "\$HOME/.m2":/root/.m2 \
+            -v maven-repo:/root/.m2 \
             -w /workspace \
             ${MAVEN_IMAGE} \
             mvn clean compile
@@ -43,7 +43,7 @@ pipeline {
         sh """
           docker run --rm \
             -v "\$PWD":/workspace \
-            -v "\$HOME/.m2":/root/.m2 \
+            -v maven-repo:/root/.m2 \
             -w /workspace \
             ${MAVEN_IMAGE} \
             mvn checkstyle:check
@@ -56,7 +56,7 @@ pipeline {
         sh """
           docker run --rm \
             -v "\$PWD":/workspace \
-            -v "\$HOME/.m2":/root/.m2 \
+            -v maven-repo:/root/.m2 \
             -w /workspace \
             ${MAVEN_IMAGE} \
             mvn test
@@ -69,14 +69,14 @@ pipeline {
         sh """
           docker run --rm \
             -v "\$PWD":/workspace \
-            -v "\$HOME/.m2":/root/.m2 \
+            -v maven-repo:/root/.m2 \
             -w /workspace \
             ${MAVEN_IMAGE} \
             mvn clean verify jacoco:report
 
           docker run --rm \
             -v "\$PWD":/workspace \
-            -v "\$HOME/.m2":/root/.m2 \
+            -v maven-repo:/root/.m2 \
             -w /workspace \
             ${MAVEN_IMAGE} \
             mvn jacoco:check
@@ -90,7 +90,7 @@ pipeline {
           sh """
             docker run --rm \
               -v "\$PWD":/workspace \
-              -v "\$HOME/.m2":/root/.m2 \
+              -v maven-repo:/root/.m2 \
               -w /workspace \
               -e SONAR_HOST_URL="\$SONAR_HOST_URL" \
               -e SONAR_AUTH_TOKEN="\$SONAR_AUTH_TOKEN" \
@@ -122,10 +122,8 @@ pipeline {
           passwordVariable: 'DOCKER_PASS'
         )]) {
           script {
-            echo "Iniciando sesión en Docker Hub..."
             sh "echo '${DOCKER_PASS}' | docker login -u '${DOCKER_USER}' --password-stdin"
 
-            echo "Construyendo y publicando imagen con formato del PDF..."
             sh """
               docker buildx build \
                 --platform linux/amd64 \

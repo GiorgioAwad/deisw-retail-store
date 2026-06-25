@@ -12,6 +12,7 @@ pipeline {
     FULL_IMAGE_LATEST = "${REGISTRY_USER}/${IMAGE_NAME}:latest"
 
     MAVEN_IMAGE = "maven:3.9.16-eclipse-temurin-26-alpine"
+    JENKINS_CONTAINER = "jenkins-master"
   }
 
   stages {
@@ -25,13 +26,28 @@ pipeline {
       }
     }
 
+    stage('Validate Workspace') {
+      steps {
+        sh """
+          echo "Workspace actual:"
+          pwd
+
+          echo "Archivos encontrados:"
+          ls -la
+
+          echo "Validando pom.xml:"
+          test -f pom.xml
+        """
+      }
+    }
+
     stage('Compile Project') {
       steps {
         sh """
           docker run --rm \
-            -v "\$PWD":/workspace \
+            --volumes-from ${JENKINS_CONTAINER} \
             -v maven-repo:/root/.m2 \
-            -w /workspace \
+            -w "$WORKSPACE" \
             ${MAVEN_IMAGE} \
             mvn clean compile
         """
@@ -42,9 +58,9 @@ pipeline {
       steps {
         sh """
           docker run --rm \
-            -v "\$PWD":/workspace \
+            --volumes-from ${JENKINS_CONTAINER} \
             -v maven-repo:/root/.m2 \
-            -w /workspace \
+            -w "$WORKSPACE" \
             ${MAVEN_IMAGE} \
             mvn checkstyle:check
         """
@@ -55,9 +71,9 @@ pipeline {
       steps {
         sh """
           docker run --rm \
-            -v "\$PWD":/workspace \
+            --volumes-from ${JENKINS_CONTAINER} \
             -v maven-repo:/root/.m2 \
-            -w /workspace \
+            -w "$WORKSPACE" \
             ${MAVEN_IMAGE} \
             mvn test
         """
@@ -68,16 +84,16 @@ pipeline {
       steps {
         sh """
           docker run --rm \
-            -v "\$PWD":/workspace \
+            --volumes-from ${JENKINS_CONTAINER} \
             -v maven-repo:/root/.m2 \
-            -w /workspace \
+            -w "$WORKSPACE" \
             ${MAVEN_IMAGE} \
             mvn clean verify jacoco:report
 
           docker run --rm \
-            -v "\$PWD":/workspace \
+            --volumes-from ${JENKINS_CONTAINER} \
             -v maven-repo:/root/.m2 \
-            -w /workspace \
+            -w "$WORKSPACE" \
             ${MAVEN_IMAGE} \
             mvn jacoco:check
         """
@@ -89,16 +105,16 @@ pipeline {
         withSonarQubeEnv('MiSonarServer') {
           sh """
             docker run --rm \
-              -v "\$PWD":/workspace \
+              --volumes-from ${JENKINS_CONTAINER} \
               -v maven-repo:/root/.m2 \
-              -w /workspace \
-              -e SONAR_HOST_URL="\$SONAR_HOST_URL" \
-              -e SONAR_AUTH_TOKEN="\$SONAR_AUTH_TOKEN" \
+              -w "$WORKSPACE" \
+              -e SONAR_HOST_URL="$SONAR_HOST_URL" \
+              -e SONAR_AUTH_TOKEN="$SONAR_AUTH_TOKEN" \
               ${MAVEN_IMAGE} \
               mvn clean verify sonar:sonar \
               -Dsonar.projectKey=retail-store-${STUDENT_CODE} \
-              -Dsonar.host.url="\$SONAR_HOST_URL" \
-              -Dsonar.token="\$SONAR_AUTH_TOKEN"
+              -Dsonar.host.url="$SONAR_HOST_URL" \
+              -Dsonar.token="$SONAR_AUTH_TOKEN"
           """
         }
 

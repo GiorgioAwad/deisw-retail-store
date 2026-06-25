@@ -1,18 +1,20 @@
 pipeline {
-  agent {
-    docker {
-      image 'maven:3.9.16-eclipse-temurin-26-alpine'
-      args '-v $HOME/.m2:/root/.m2 -v /var/run/docker.sock:/var/run/docker.sock'
-      reuseNode true
-    }
+  agent any
+
+  tools {
+    maven 'MAVEN_3_9_16'
+    jdk 'JDK_26'
   }
 
   environment {
-    DOCKERHUB_USER = 'giorgioawad'
-    STUDENT_CODE = 'U202324041'
+    REGISTRY_USER = "giorgioawad"
+    STUDENT_CODE = "U202324041"
+
     IMAGE_NAME = "retail-store-${STUDENT_CODE}"
-    IMAGE_TAG = 'v1'
-    FULL_IMAGE_NAME = "${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+    TAG = "${env.BUILD_NUMBER}"
+
+    FULL_IMAGE_TAG = "${REGISTRY_USER}/${IMAGE_NAME}:${TAG}"
+    FULL_IMAGE_LATEST = "${REGISTRY_USER}/${IMAGE_NAME}:latest"
   }
 
   stages {
@@ -26,73 +28,85 @@ pipeline {
 
     stage('Compile Project') {
       steps {
-        sh 'mvn clean compile'
+        withMaven(maven: 'MAVEN_3_9_16') {
+          sh 'mvn clean compile'
+        }
       }
     }
 
     stage('Validate Checkstyle') {
       steps {
-        sh 'mvn checkstyle:check'
+        withMaven(maven: 'MAVEN_3_9_16') {
+          sh 'mvn checkstyle:check'
+        }
       }
     }
 
     stage('Validate Unit Tests') {
       steps {
-        sh 'mvn test'
+        withMaven(maven: 'MAVEN_3_9_16') {
+          sh 'mvn test'
+        }
       }
     }
 
     stage('Validate Test Coverage') {
       steps {
-        sh 'mvn clean verify jacoco:report'
-        sh 'mvn jacoco:check'
-      }
-    }
-
-    /*
-    stage('SonarQube Analysis') {
-      steps {
-        withSonarQubeEnv('sonarLocal') {
-          sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=retail-store'
+        withMaven(maven: 'MAVEN_3_9_16') {
+          sh 'mvn clean verify jacoco:report'
+          sh 'mvn jacoco:check'
         }
       }
     }
-    */
 
-    stage('Package Project') {
+    stage('SonarQube Analysis') {
       steps {
-        sh 'mvn package -DskipTests'
+        withSonarQubeEnv('MiSonarServer') {
+          sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=retail-store'
+        }
+
+        script {
+          timeout(time: 10, unit: 'MINUTES') {
+            def qg = waitForQualityGate()
+
+            if (qg.status != 'OK') {
+              error "El pipeline se ha detenido porque el código no superó el Quality Gate de SonarQube. Estado: ${qg.status}"
+            }
+          }
+        }
       }
     }
 
-    stage('Build Docker Image') {
-      steps {
-        sh 'docker build -t $FULL_IMAGE_NAME .'
-      }
-    }
-
-    stage('Push Docker Image') {
+    stage('Build and Push Docker Image') {
       steps {
         withCredentials([usernamePassword(
-          credentialsId: 'dockerhub-credentials',
+          credentialsId: 'DOCKER_HUB_CREDENTIALS',
           usernameVariable: 'DOCKER_USER',
           passwordVariable: 'DOCKER_PASS'
         )]) {
-          sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-          sh 'docker push $FULL_IMAGE_NAME'
+          script {
+            echo "Iniciando sesión en Docker Hub..."
+            sh "echo '${DOCKER_PASS}' | docker login -u '${DOCKER_USER}' --password-stdin"
+
+            echo "Construyendo y publicando imagen AMD64..."
+            sh """
+              docker buildx build \
+                --platform linux/amd64 \
+                -t ${FULL_IMAGE_TAG} \
+                -t ${FULL_IMAGE_LATEST} \
+                --push .
+            """
+          }
         }
       }
     }
   }
 
   post {
-    always {
-      archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, allowEmptyArchive: true
-    }
-
     success {
       echo "Pipeline ejecutado correctamente."
-      echo "Imagen publicada: ${FULL_IMAGE_NAME}"
+      echo "Imagen publicada: ${FULL_IMAGE_TAG}"
+      echo "Imagen latest publicada: ${FULL_IMAGE_LATEST}"
     }
 
     failure {

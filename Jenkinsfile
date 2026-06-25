@@ -1,68 +1,99 @@
 pipeline {
   agent any
 
-  tools {
-    maven 'MAVEN_3_9_16'
-    jdk 'JDK_26'
-  }
-
   environment {
     REGISTRY_USER = "giorgioawad"
-    STUDENT_CODE = "U202324041"
+    STUDENT_CODE = "u202324041"
 
     IMAGE_NAME = "retail-store-${STUDENT_CODE}"
     TAG = "${env.BUILD_NUMBER}"
 
     FULL_IMAGE_TAG = "${REGISTRY_USER}/${IMAGE_NAME}:${TAG}"
     FULL_IMAGE_LATEST = "${REGISTRY_USER}/${IMAGE_NAME}:latest"
+
+    MAVEN_IMAGE = "maven:3.9.16-eclipse-temurin-26-alpine"
   }
 
   stages {
     stage('Validate Environment') {
       steps {
-        sh 'java -version'
-        sh 'mvn -version'
-        sh 'docker --version'
+        sh """
+          docker run --rm ${MAVEN_IMAGE} java -version
+          docker run --rm ${MAVEN_IMAGE} mvn -version
+          docker --version
+        """
       }
     }
 
     stage('Compile Project') {
       steps {
-        withMaven(maven: 'MAVEN_3_9_16') {
-          sh 'mvn clean compile'
-        }
+        sh """
+          docker run --rm \
+            -v "\$PWD":/workspace \
+            -w /workspace \
+            ${MAVEN_IMAGE} \
+            mvn clean compile
+        """
       }
     }
 
     stage('Validate Checkstyle') {
       steps {
-        withMaven(maven: 'MAVEN_3_9_16') {
-          sh 'mvn checkstyle:check'
-        }
+        sh """
+          docker run --rm \
+            -v "\$PWD":/workspace \
+            -w /workspace \
+            ${MAVEN_IMAGE} \
+            mvn checkstyle:check
+        """
       }
     }
 
     stage('Validate Unit Tests') {
       steps {
-        withMaven(maven: 'MAVEN_3_9_16') {
-          sh 'mvn test'
-        }
+        sh """
+          docker run --rm \
+            -v "\$PWD":/workspace \
+            -w /workspace \
+            ${MAVEN_IMAGE} \
+            mvn test
+        """
       }
     }
 
     stage('Validate Test Coverage') {
       steps {
-        withMaven(maven: 'MAVEN_3_9_16') {
-          sh 'mvn clean verify jacoco:report'
-          sh 'mvn jacoco:check'
-        }
+        sh """
+          docker run --rm \
+            -v "\$PWD":/workspace \
+            -w /workspace \
+            ${MAVEN_IMAGE} \
+            mvn clean verify jacoco:report
+
+          docker run --rm \
+            -v "\$PWD":/workspace \
+            -w /workspace \
+            ${MAVEN_IMAGE} \
+            mvn jacoco:check
+        """
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
         withSonarQubeEnv('MiSonarServer') {
-          sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=retail-store'
+          sh """
+            docker run --rm \
+              -v "\$PWD":/workspace \
+              -w /workspace \
+              -e SONAR_HOST_URL="\$SONAR_HOST_URL" \
+              -e SONAR_AUTH_TOKEN="\$SONAR_AUTH_TOKEN" \
+              ${MAVEN_IMAGE} \
+              mvn clean verify sonar:sonar \
+              -Dsonar.projectKey=retail-store \
+              -Dsonar.host.url="\$SONAR_HOST_URL" \
+              -Dsonar.token="\$SONAR_AUTH_TOKEN"
+          """
         }
 
         script {
@@ -70,7 +101,7 @@ pipeline {
             def qg = waitForQualityGate()
 
             if (qg.status != 'OK') {
-              error "El pipeline se ha detenido porque el código no superó el Quality Gate de SonarQube. Estado: ${qg.status}"
+              error "El pipeline se detuvo porque no superó el Quality Gate de SonarQube. Estado: ${qg.status}"
             }
           }
         }
@@ -85,10 +116,8 @@ pipeline {
           passwordVariable: 'DOCKER_PASS'
         )]) {
           script {
-            echo "Iniciando sesión en Docker Hub..."
             sh "echo '${DOCKER_PASS}' | docker login -u '${DOCKER_USER}' --password-stdin"
 
-            echo "Construyendo y publicando imagen AMD64..."
             sh """
               docker buildx build \
                 --platform linux/amd64 \

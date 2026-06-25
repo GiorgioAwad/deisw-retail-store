@@ -114,7 +114,7 @@ pipeline {
               mvn clean verify sonar:sonar \
               -Dsonar.projectKey=retail-store-${STUDENT_CODE} \
               -Dsonar.host.url="$SONAR_HOST_URL" \
-              -Dsonar.token="$SONAR_AUTH_TOKEN"
+              -Dsonar.login="$SONAR_AUTH_TOKEN"
           """
         }
 

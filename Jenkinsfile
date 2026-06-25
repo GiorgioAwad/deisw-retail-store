@@ -8,7 +8,7 @@ pipeline {
   }
 
   environment {
-    DOCKERHUB_USER = 'GiorgioAwad'
+    DOCKERHUB_USER = 'giorgioawad'
     STUDENT_CODE = 'U202324041'
     IMAGE_NAME = "retail-store-${STUDENT_CODE}"
     IMAGE_TAG = 'v1'

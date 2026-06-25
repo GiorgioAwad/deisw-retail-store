@@ -3,15 +3,15 @@ FROM maven:3.9.16-eclipse-temurin-26-alpine AS build
 
 WORKDIR /workspace
 
-# Copia el pom.xml primero para aprovechar cache de dependencias
+# Copiar pom.xml primero para aprovechar cache de dependencias
 COPY pom.xml .
 
 RUN mvn -B -f pom.xml -DskipTests dependency:go-offline
 
-# Copia el resto del proyecto
+# Copiar el resto del proyecto
 COPY . .
 
-# Construye el proyecto sin ejecutar tests
+# Construir el proyecto sin ejecutar tests
 RUN mvn -B -DskipTests package
 
 
@@ -20,7 +20,7 @@ FROM eclipse-temurin:26-jre-alpine
 
 WORKDIR /app
 
-# Copia el JAR generado desde la etapa build
+# Copiar el JAR generado
 COPY --from=build /workspace/target/*.jar app.jar
 
 # Variables por defecto
@@ -30,5 +30,4 @@ ENV JAVA_OPTS=""
 
 EXPOSE 8091
 
-# Ejecuta la aplicación
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE} -Dserver.port=${PORT} -jar /app/app.jar"]
